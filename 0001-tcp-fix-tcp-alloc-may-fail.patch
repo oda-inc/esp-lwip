@@ -1,0 +1,70 @@
+From 8534c3243345d86ff399a47026497bc4963a3b31 Mon Sep 17 00:00:00 2001
+From: yuanjm <yuanjianmin@espressif.com>
+Date: Thu, 4 Feb 2021 18:02:09 +0800
+Subject: [PATCH] tcp: fix tcp alloc may fail
+
+---
+ src/core/tcp.c | 41 ++++++++++++++++++-----------------------
+ 1 file changed, 18 insertions(+), 23 deletions(-)
+
+diff --git a/src/core/tcp.c b/src/core/tcp.c
+index c85ca5e..ba17216 100644
+--- a/src/core/tcp.c
++++ b/src/core/tcp.c
+@@ -1892,35 +1892,30 @@ tcp_alloc(u8_t prio)
+ #endif
+   LWIP_ASSERT_CORE_LOCKED();
+ #if ESP_LWIP
+-    
+   tcp_pcb_num_cal(&tcp_pcb_num);
+-
+-  if (tcp_pcb_num.total >= MEMP_NUM_TCP_PCB) {
+-    if (tcp_pcb_num.time_wait > 0){
+-      tcp_kill_timewait();
+-    } else if (tcp_pcb_num.last_ack > 0){
+-      tcp_kill_state(LAST_ACK);
+-    } else if (tcp_pcb_num.closing > 0){
+-      tcp_kill_state(CLOSING);
+-    } else if (tcp_pcb_num.fin_wait2 > 0){
+-      tcp_kill_state(FIN_WAIT_2);
+-    } else if (tcp_pcb_num.fin_wait1 > 0){
+-      tcp_kill_state(FIN_WAIT_1);
+-    } else {
+-      tcp_kill_prio(prio);
++  do {
++    if (tcp_pcb_num.total >= MEMP_NUM_TCP_PCB) {
++      if (tcp_pcb_num.time_wait > 0){
++        tcp_kill_timewait();
++      } else if (tcp_pcb_num.last_ack > 0){
++        tcp_kill_state(LAST_ACK);
++      } else if (tcp_pcb_num.closing > 0){
++        tcp_kill_state(CLOSING);
++      } else if (tcp_pcb_num.fin_wait2 > 0){
++        tcp_kill_state(FIN_WAIT_2);
++      } else if (tcp_pcb_num.fin_wait1 > 0){
++        tcp_kill_state(FIN_WAIT_1);
++      } else {
++        tcp_kill_prio(prio);
++      }
+     }
+-  }
+-
+-  tcp_pcb_num_cal(&tcp_pcb_num);
+-  if (tcp_pcb_num.total >= MEMP_NUM_TCP_PCB){
+-    LWIP_DEBUGF(TCP_DEBUG, ("tcp_alloc: no available tcp pcb %d %d %d %d %d %d %d %d\n",
++    tcp_pcb_num_cal(&tcp_pcb_num);
++  } while (tcp_pcb_num.total >= MEMP_NUM_TCP_PCB);
++  LWIP_DEBUGF(TCP_DEBUG, ("tcp_alloc: tcp pcb %d %d %d %d %d %d %d %d\n",
+     tcp_pcb_num.total, tcp_pcb_num.time_wait, tcp_pcb_num.last_ack, tcp_pcb_num.closing,
+     tcp_pcb_num.fin_wait2, tcp_pcb_num.fin_wait1, tcp_pcb_num.listen, tcp_pcb_num.bound));
+-    return NULL;
+-  }
+ #endif
+ 
+-
+   pcb = (struct tcp_pcb *)memp_malloc(MEMP_TCP_PCB);
+   if (pcb == NULL) {
+     /* Try to send FIN for all pcbs stuck in TF_CLOSEPEND first */
+-- 
+2.7.4
+
